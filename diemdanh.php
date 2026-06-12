@@ -217,7 +217,7 @@ if (!empty($selected_buoi)) {
 
 <aside class="h-full w-64 fixed left-0 top-0 bg-white border-r border-outline-variant flex flex-col z-50">
     <div class="px-gutter pt-10 pb-6 flex flex-col">
-        <img alt="Athena Admin Logo" class="w-20 h-auto mx-auto mb-4" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA9uCEtRrfZi1OYmIF4rJvGQQKWpBcvDCR7wvV_WolGNAy0NfYY-Ug0EfTJjgQOAOaz0PyjhED_RU8ur7rZnigd-zQ_Lm2fPJWPFEuGCLWOFezOf6yu6TZWDJReGL30qRwqQxN9JC2EjxqqptcRQxQFDs9Dp0GDfXMHOOl1k3OIK7dETtW7ywhvmvf-UHS8jC82WmCv79uJALyb6wrznTjfnu2-xR-4oafSZSybfAc8qqmLckg40qlrKXwe6E5mHkykVoRQKgVZr1g">
+        <img alt="Athena Admin Logo" class="w-20 h-auto mx-auto mb-4" src="/quanlytrungtam/logo.jpg">
         <h1 class="font-headline-md text-[20px] font-bold text-primary leading-none text-center">Athena Admin</h1>
     </div>
 
@@ -267,9 +267,18 @@ if (!empty($selected_buoi)) {
             <div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-[10px] font-bold text-white">AD</div>
             <div class="flex items-center gap-2">
                 <p class="font-label-md text-label-md text-on-surface font-semibold">Admin User</p>
-                <button class="text-secondary hover:text-primary transition-colors flex items-center">
-                    <span class="material-symbols-outlined text-[18px]">logout</span>
-                </button>
+                <a
+                    href="../backend/logout.php"
+                    title="Đăng xuất"
+                    class="p-2 rounded-lg
+                        hover:bg-red-50
+                        text-secondary
+                        hover:text-red-600
+                        transition">
+                    <span class="material-symbols-outlined">
+                        logout
+                    </span>
+                </a>
             </div>
         </div>
     </div>
@@ -283,10 +292,12 @@ if (!empty($selected_buoi)) {
 
     <main class="ml-64 flex-grow min-h-screen flex flex-col overflow-y-auto p-8 gap-6">
         
-        <header class="flex justify-between items-center border-b pb-4">
+         <header class="flex justify-between items-center border-b pb-4">
             <h2 class="text-2xl font-bold text-on-surface"> Điểm danh</h2>
-            <button type="submit" name="btn_save" class="px-6 py-2.5 bg-[#bb0025] text-white rounded-xl font-bold flex items-center gap-2 hover:opacity-90 transition-all shadow-md">
-                <span class="material-symbols-outlined text-lg">save</span> Lưu điểm danh
+            <button type="submit" name="btn_save"
+                class="px-4 py-1.5 bg-[#bb0025] text-white rounded-xl font-bold flex items-center gap-2 hover:opacity-90 transition-all shadow-md text-sm">
+                <span class="material-symbols-outlined text-base">save</span>
+                    Lưu điểm danh
             </button>
         </header>
 
