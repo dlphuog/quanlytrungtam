@@ -1,116 +1,122 @@
 <?php
-// 1. KẾT NỐI CƠ SỞ DỮ LIỆU (Bạn điều chỉnh lại cấu hình kết nối của bạn nếu cần)
-$host = "localhost";
-$user = "root";
-$pass = "";
-$db   = "quanlytrungtam"; // Thay bằng tên database thực tế của bạn
+session_start();
 
-$conn = new mysqli($host, $user, $pass, $db);
-if ($conn->connect_error) {
-    die("Kết nối thất bại: " . $conn->connect_error);
-}
-mysqli_set_charset($conn, 'utf8');
-
-// 2. LẤY GIÁ TRỊ BỘ LỌC ĐƯỢC CHỌN (Mặc định lấy lớp đầu tiên)
-$selected_lop  = isset($_GET['ma_lop']) ? $_GET['ma_lop'] : 'LH401';
-$selected_ngay = isset($_GET['ngay_hoc']) ? $_GET['ngay_hoc'] : date('Y-m-d');
-$selected_buoi = isset($_GET['ma_buoi']) ? $_GET['ma_buoi'] : '';
-
-// Nếu chưa chọn buổi cụ thể, tự tìm buổi học của ngày đó hoặc buổi gần nhất thuộc lớp đó
-if (empty($selected_buoi)) {
-    $sql_check_buoi = "SELECT MaBuoiHoc FROM BuoiHoc WHERE MaLopHoc = '$selected_lop' AND NgayHoc = '$selected_ngay' LIMIT 1";
-    $res_check = $conn->query($sql_check_buoi);
-    if ($res_check && $res_check->num_rows > 0) {
-        $selected_buoi = $res_check->fetch_assoc()['MaBuoiHoc'];
-    } else {
-        $sql_fallback = "SELECT MaBuoiHoc, NgayHoc FROM BuoiHoc WHERE MaLopHoc = '$selected_lop' LIMIT 1";
-        $res_fallback = $conn->query($sql_fallback);
-        if ($res_fallback && $res_fallback->num_rows > 0) {
-            $row_fb = $res_fallback->fetch_assoc();
-            $selected_buoi = $row_fb['MaBuoiHoc'];
-            $selected_ngay = $row_fb['NgayHoc'];
-        }
-    }
+if(!isset($_SESSION['MaTaiKhoan'])){
+    header("Location: ../login.php");
+    exit();
 }
 
-// 3. XỬ LÝ LƯU ĐIỂM DANH KHI BẤM NÚT SUBMIT
-$thong_bao_luu = "";
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['btn_save'])) {
-    $buoi_id = $_POST['form_ma_buoi'];
-    if (!empty($buoi_id) && isset($_POST['trang_thai'])) {
-        foreach ($_POST['trang_thai'] as $ma_hv => $status) {
-            $ghi_chu = isset($_POST['ghi_chu'][$ma_hv]) ? mysqli_real_escape_string($conn, $_POST['ghi_chu'][$ma_hv]) : '';
-            
-            // Kiểm tra xem học viên này đã có bản ghi điểm danh ở buổi này chưa
-            $sql_check_exist = "SELECT MaDiemDanh FROM DiemDanh WHERE MaBuoiHoc = '$buoi_id' AND MaHocVien = '$ma_hv'";
-            $check_res = $conn->query($sql_check_exist);
-            
-            if ($check_res && $check_res->num_rows > 0) {
-                // Đã có -> Cập nhật (UPDATE)
-                $sql_save = "UPDATE DiemDanh SET TrangThai = N'$status', GhiChu = N'$ghi_chu' WHERE MaBuoiHoc = '$buoi_id' AND MaHocVien = '$ma_hv'";
-            } else {
-                // Chưa có -> Tạo mới (INSERT)
-                $new_id = 'DD' . rand(100, 999);
-                $sql_save = "INSERT INTO DiemDanh (MaDiemDanh, MaBuoiHoc, MaHocVien, TrangThai, GhiChu) VALUES ('$new_id', '$buoi_id', '$ma_hv', N'$status', N'$ghi_chu')";
-            }
-            $conn->query($sql_save);
-        }
-        $thong_bao_luu = "<script>alert('Lưu dữ liệu điểm danh thành công!');</script>";
-    }
+if($_SESSION['role'] != 'GV'){
+    header("Location: ../login.php");
+    exit();
 }
 
-// 4. LẤY DỮ LIỆU ĐỂ HIỂN THỊ THỐNG KÊ (BENTO BOX)
-$tong_hv = 0; $co_mat = 0; $vang = 0; $co_phep = 0;
-if (!empty($selected_buoi)) {
-    // Tổng học viên thuộc lớp này
-    $res_tong = $conn->query("SELECT COUNT(*) as total FROM ChiTietLopHoc WHERE MaLopHoc = '$selected_lop'");
-    $tong_hv = $res_tong ? $res_tong->fetch_assoc()['total'] : 0;
+$conn = new mysqli("localhost","root","","quanlytrungtam");
 
-    // Đếm số lượng theo trạng thái điểm danh thực tế
-    $res_cm = $conn->query("SELECT COUNT(*) as total FROM DiemDanh WHERE MaBuoiHoc = '$selected_buoi' AND TrangThai = N'Có mặt'");
-    $co_mat = $res_cm ? $res_cm->fetch_assoc()['total'] : 0;
-
-    $res_v = $conn->query("SELECT COUNT(*) as total FROM DiemDanh WHERE MaBuoiHoc = '$selected_buoi' AND TrangThai = N'Vắng' AND (GhiChu NOT LIKE N'%phép%' OR GhiChu IS NULL)");
-    $vang = $res_v ? $res_v->fetch_assoc()['total'] : 0;
-
-    $res_cp = $conn->query("SELECT COUNT(*) as total FROM DiemDanh WHERE MaBuoiHoc = '$selected_buoi' AND (TrangThai = N'Có phép' OR GhiChu LIKE N'%phép%' OR GhiChu LIKE N'%xin nghỉ%') AND TrangThai = N'Vắng'");
-    $co_phep = $res_cp ? $res_cp->fetch_assoc()['total'] : 0;
-    // Nếu db lưu chữ vắng nhưng ghi chú có phép, ta linh hoạt gộp hiển thị
+if($conn->connect_error){
+    die("Lỗi kết nối");
 }
 
-// 5. TRUY VẤN DANH SÁCH HỌC VIÊN VÀ TRẠNG THÁI ĐIỂM DANH HIỆN TẠI
-$ds_hoc_vien = [];
-if (!empty($selected_buoi)) {
-    $sql_hv = "SELECT hv.MaHocVien, nd.HoTen, lh.TenLop, dd.TrangThai, dd.GhiChu
-               FROM ChiTietLopHoc ctlh
-               JOIN HocVien hv ON ctlh.MaHocVien = hv.MaHocVien
-               JOIN TaiKhoan tk ON hv.MaTaiKhoan = tk.MaTaiKhoan
-               JOIN NguoiDung nd ON tk.MaNguoiDung = nd.MaNguoiDung
-               JOIN LopHoc lh ON ctlh.MaLopHoc = lh.MaLopHoc
-               LEFT JOIN DiemDanh dd ON dd.MaHocVien = hv.MaHocVien AND dd.MaBuoiHoc = '$selected_buoi'
-               WHERE ctlh.MaLopHoc = '$selected_lop'";
-    $res_hv = $conn->query($sql_hv);
-    if ($res_hv) {
-        while ($row = $res_hv->fetch_assoc()) {
-            $ds_hoc_vien[] = $row;
-        }
-    }
-}
+$conn->set_charset("utf8");
+
+$maTaiKhoan = $_SESSION['MaTaiKhoan'];
+
+$sqlGV = "
+SELECT nd.HoTen
+FROM giaovien gv
+INNER JOIN taikhoan tk
+    ON gv.MaTaiKhoan = tk.MaTaiKhoan
+INNER JOIN nguoidung nd
+    ON tk.MaNguoiDung = nd.MaNguoiDung
+WHERE gv.MaTaiKhoan = '$maTaiKhoan'
+";
+
+$giaovien = $conn->query($sqlGV)->fetch_assoc();
+
+$maBuoiHoc = $_GET['MaBuoiHoc'] ?? 'BH001';
+$maLop = $_GET['MaLopHoc'] ?? 'LH001';
+
+$sql = "
+SELECT
+    hv.MaHocVien,
+    nd.HoTen,
+    dd.TrangThai,
+    dd.GhiChu
+FROM buoihoc bh
+INNER JOIN chitietlophoc ctl
+    ON bh.MaLopHoc = ctl.MaLopHoc
+INNER JOIN hocvien hv
+    ON ctl.MaHocVien = hv.MaHocVien
+INNER JOIN taikhoan tk
+    ON hv.MaTaiKhoan = tk.MaTaiKhoan
+INNER JOIN nguoidung nd
+    ON tk.MaNguoiDung = nd.MaNguoiDung
+LEFT JOIN diemdanh dd
+    ON dd.MaHocVien = hv.MaHocVien
+    AND dd.MaBuoiHoc = bh.MaBuoiHoc
+WHERE bh.MaBuoiHoc = '$maBuoiHoc'
+";
+
+$result = $conn->query($sql);
+
+$sqlThongKe = "
+SELECT
+SUM(CASE WHEN TrangThai='Co mat' THEN 1 ELSE 0 END) CoMat,
+SUM(CASE WHEN TrangThai='Muon' THEN 1 ELSE 0 END) Muon,
+SUM(CASE WHEN TrangThai='Vang' THEN 1 ELSE 0 END) Vang
+FROM diemdanh
+WHERE MaBuoiHoc='$maBuoiHoc'
+";
+
+$thongKe = $conn->query($sqlThongKe)->fetch_assoc();
+
+$sqlBuoiHoc = "
+SELECT
+bh.NgayHoc,
+lh.TenLop
+FROM buoihoc bh
+INNER JOIN lophoc lh
+ON bh.MaLopHoc=lh.MaLopHoc
+WHERE bh.MaBuoiHoc='$maBuoiHoc'
+";
+
+$buoiHoc = $conn->query($sqlBuoiHoc)->fetch_assoc();
+
+$sqlDSLOP = "
+SELECT
+    lh.MaLopHoc,
+    lh.TenLop
+FROM lophoc lh
+INNER JOIN giaovien gv
+    ON lh.MaGiaoVien = gv.MaGiaoVien
+WHERE gv.MaTaiKhoan='$maTaiKhoan'
+";
+
+$dsLop = $conn->query($sqlDSLOP);
+
+$sqlDSBuoi = "
+SELECT
+    MaBuoiHoc,
+    NgayHoc
+FROM buoihoc
+WHERE MaLopHoc='$maLop'
+ORDER BY NgayHoc
+";
+
+$dsBuoi = $conn->query($sqlDSBuoi);
 ?>
-<!DOCTYPE html>
-<html lang="vi">
-<head>
-    <meta charset="utf-8"/>
-    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-    <title>Cài đặt - Athena Admin</title>
-    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!DOCTYPE html><html class="light" lang="vi" style=""><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>Điểm danh - Athena Teacher</title>
+ <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
     <script id="tailwind-config">
         tailwind.config = {
             darkMode: "class",
             theme: {
-                extend: {
+               extend: {
                     "colors": {
                         "on-surface-variant": "#5d3f3c",
                         "secondary-fixed": "#d8e3fb",
@@ -164,7 +170,6 @@ if (!empty($selected_buoi)) {
                         "DEFAULT": "0.25rem",
                         "lg": "0.5rem",
                         "xl": "0.75rem",
-                        "2xl": "1rem",
                         "full": "9999px"
                     },
                     "spacing": {
@@ -200,227 +205,447 @@ if (!empty($selected_buoi)) {
                         "display-lg": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
                         "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}]
                     }
+
                 }
             }
-        }
+        };
     </script>
     <style>
         body { font-family: 'Montserrat', sans-serif; background-color: #f8f9fa; }
         .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
-        .tab-content { display: none; }
-        .tab-content.active { display: block; }
-        .inner-nav-active { background-color: #ffdad6; color: #93000e; font-weight: 700; }
+        .chart-bar-grow { transition: height 1s ease-out; }
+        .sidebar-active { background-color: #ffdad6; color: #93000e; font-weight: 700; border-radius: 0.5rem; }
+            .sidebar-active .material-symbols-outlined { font-variation-settings: 'FILL' 1, 'wght' 700, 'GRAD' 0, 'opsz' 24; }
+            .no-scrollbar::-webkit-scrollbar { display: none; }
+            .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+        .tonal-card{
+            background:#fff;
+            border:1px solid #e5e7eb;
+            box-shadow:0 1px 3px rgba(0,0,0,.08);
+        }
     </style>
 </head>
 <body class="text-on-surface">
+<!-- Fixed SideNavBar - Shell from SCREEN_10 -->
+<aside class="fixed left-0 top-0 h-full w-[260px] bg-surface-container-lowest shadow-sm flex flex-col p-4 border-r border-outline-variant z-50">
+<div class="px-6 pt-8 pb-4 flex flex-col items-center">          
+    <img
+src="/quanlytrungtam/logo.jpg"
+alt="Athena Logo"
+class="w-20 h-20 mx-auto rounded-3xl shadow-2xl">
 
-
-<aside class="h-full w-64 fixed left-0 top-0 bg-white border-r border-outline-variant flex flex-col z-50">
-    <div class="px-gutter pt-10 pb-6 flex flex-col">
-        <img alt="Athena Admin Logo" class="w-20 h-auto mx-auto mb-4" src="/quanlytrungtam/logo.jpg">
-        <h1 class="font-headline-md text-[20px] font-bold text-primary leading-none text-center">Athena Admin</h1>
+    <h1 class="mt-4 text-[20px] font-bold text-primary text-center">
+        Athena Teacher
+</h1>
     </div>
+<nav class="flex-1 space-y-2 overflow-y-auto no-scrollbar">
+<a class="flex items-center gap-3 text-secondary hover:bg-surface-container rounded-lg px-4 py-3 transition-colors" href="tongquan.php">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span class="font-label-md text-label-md">Tổng quan</span>
+</a>
+<a class="flex items-center gap-3 text-secondary hover:bg-surface-container rounded-lg px-4 py-3 transition-colors" href="lichgiangday.php">
+<span class="material-symbols-outlined" data-icon="calendar_month">calendar_month</span>
+<span class="font-label-md text-label-md">Lịch giảng dạy</span>
+</a>
+<a class="flex items-center gap-3 text-secondary hover:bg-surface-container rounded-lg px-4 py-3 transition-colors" href="quanlylophoc.php">
+<span class="material-symbols-outlined" data-icon="groups">groups</span>
+<span class="font-label-md text-label-md">Quản lý lớp học</span>
+</a>
+<!-- Active state: Điểm danh -->
+<a class="flex items-center gap-3 bg-primary-fixed text-primary rounded-lg px-4 py-3 active-nav transition-colors" href="diemdanh.php">
+<span class="material-symbols-outlined" data-icon="fact_check" style="font-variation-settings: 'FILL' 1;">fact_check</span>
+<span class="font-label-md text-label-md">Điểm danh</span>
+</a>
+<a class="flex items-center gap-3 text-secondary hover:bg-surface-container rounded-lg px-4 py-3 transition-colors" href="quanlydiemso.php">
+<span class="material-symbols-outlined" data-icon="grade">grade</span>
+<span class="font-label-md text-label-md">Quản lý điểm số</span>
+</a>
+<a class="flex items-center gap-3 text-secondary hover:bg-surface-container rounded-lg px-4 py-3 transition-colors" href="nhanxetdanhgia.php">
+<span class="material-symbols-outlined" data-icon="rate_review">rate_review</span>
+<span class="font-label-md text-label-md">Đánh giá &amp; Nhận xét</span>
+</a>
+</nav>
+<div class="mt-auto border-t border-outline-variant pt-4">
 
+    <div class="flex items-center justify-between px-3 py-2">
 
-    <nav class="flex-1 overflow-y-auto py-2 px-4 space-y-0.5 scrollbar-hide">
-        <a class="flex items-center gap-3 px-4 py-2.5 text-secondary hover:text-primary hover:bg-primary/5 rounded-lg transition-colors" href="dashboard.php">
-            <span class="material-symbols-outlined text-[20px]">dashboard</span>
-            <span class="font-label-md text-label-md">Dashboard</span>
-        </a>
-        <a class="flex items-center gap-3 px-4 py-2.5 text-secondary hover:text-primary hover:bg-primary/5 rounded-lg transition-colors" href="hocvien.php">
-            <span class="material-symbols-outlined text-[20px]">group</span>
-            <span class="font-label-md text-label-md">Học viên</span>
-        </a>
-        <a class="flex items-center gap-3 px-4 py-2.5 text-secondary hover:text-primary hover:bg-primary/5 rounded-lg transition-colors" href="lophoc.php">
-            <span class="material-symbols-outlined text-[20px]">school</span>
-            <span class="font-label-md text-label-md">Lớp học</span>
-        </a>
-        <a class="flex items-center gap-3 px-4 py-2.5 text-secondary hover:text-primary hover:bg-primary/5 rounded-lg transition-colors" href="giaovien.php">
-            <span class="material-symbols-outlined text-[20px]">record_voice_over</span>
-            <span class="font-label-md text-label-md">Giáo viên</span>
-        </a>
-        <a class="flex items-center gap-3 px-4 py-2.5 text-secondary hover:text-primary hover:bg-primary/5 rounded-lg transition-colors" href="thoikhoabieu.php">
-            <span class="material-symbols-outlined text-[20px]">calendar_today</span>
-            <span class="font-label-md text-label-md">Thời khóa biểu</span>
-        </a>
-        <a class="flex items-center gap-3 px-4 py-2.5 bg-primary/10 text-primary rounded-lg transition-colors" href="DIEMDANH.php">
-            <span class="material-symbols-outlined text-[20px]">fact_check</span>
-            <span class="font-label-md text-label-md">Điểm danh</span>
-        </a>
-        <a class="flex items-center gap-3 px-4 py-2.5 text-secondary hover:text-primary hover:bg-primary/5 rounded-lg transition-colors" href="KETQUAHOCTAP.php">
-            <span class="material-symbols-outlined text-[20px]">analytics</span>
-            <span class="font-label-md text-label-md">Kết quả học tập</span>
-        </a>
-        <a class="flex items-center gap-3 px-4 py-2.5 text-secondary hover:text-primary hover:bg-primary/5 rounded-lg transition-colors" href="baocao.php">
-            <span class="material-symbols-outlined text-[20px]">assessment</span>
-            <span class="font-label-md text-label-md">Báo cáo</span>
-        </a>
-        <a class="flex items-center gap-3 px-4 py-2.5 text-secondary hover:text-primary hover:bg-primary/5 rounded-lg transition-colors" href="caidat.php">
-            <span class="material-symbols-outlined text-[20px]">settings</span>
-            <span class="font-label-md text-label-md">Cài đặt</span>
-        </a>
-    </nav>
+        <div class="flex items-center gap-3">
 
+            <div
+            class="w-10 h-10 rounded-full
+                   bg-primary text-white
+                   flex items-center justify-center
+                   font-bold text-sm">
 
-    <div class="p-6">
-        <div class="flex items-center justify-center gap-3 bg-surface-container-low/30 py-3 rounded-xl">
-            <div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-[10px] font-bold text-white">AD</div>
-            <div class="flex items-center gap-2">
-                <p class="font-label-md text-label-md text-on-surface font-semibold">Admin User</p>
-                <a
-                    href="../backend/logout.php"
-                    title="Đăng xuất"
-                    class="p-2 rounded-lg
-                        hover:bg-red-50
-                        text-secondary
-                        hover:text-red-600
-                        transition">
-                    <span class="material-symbols-outlined">
-                        logout
-                    </span>
-                </a>
+                <?= strtoupper(substr($giaovien['HoTen'],0,1)) ?>
+
             </div>
+
+            <div>
+
+                <p class="font-bold text-sm">
+                    <?= htmlspecialchars($giaovien['HoTen']) ?>
+                </p>
+
+                <p class="text-xs text-secondary">
+                    Giáo viên
+                </p>
+
+            </div>
+
         </div>
+
+        <a
+        href="../backend/logout.php"
+        title="Đăng xuất"
+        class="p-2 rounded-lg
+               hover:bg-red-50
+               text-secondary
+               hover:text-red-600
+               transition">
+
+            <span class="material-symbols-outlined">
+                logout
+            </span>
+
+        </a>
+
     </div>
 </aside>
+<!-- Main Content Area -->
+<!-- Main Canvas -->
+<main class="ml-[260px] min-h-screen flex flex-col overflow-y-auto">
+<header class="flex justify-between items-center h-16 px-6 sticky top-0 z-40 bg-surface/80 backdrop-blur-md border-b border-surface-container-highest">
+    <div class="flex items-center">
+        <h2 class="font-headline-md text-headline-md font-bold text-on-surface">
+            Điểm danh
+        </h2>
+    </div>
+</header>
 
+<!-- Breadcrumb & Header -->
+<div class="p-6">
 
-<?php echo $thong_bao_luu; ?>
+<div class="flex items-center gap-4 mb-6">
+<div class="h-8 w-[1px] bg-outline-variant mx-unit-sm"></div>
+<div class="flex gap-3 flex-wrap">
 
-<form id="attendanceForm" method="POST" action="">
-    <input type="hidden" name="form_ma_buoi" value="<?php echo htmlspecialchars($selected_buoi); ?>">
+    <!-- Chọn lớp -->
+    <div class="relative min-w-[260px]">
 
-    <main class="ml-64 flex-grow min-h-screen flex flex-col overflow-y-auto p-8 gap-6">
-        
-         <header class="flex justify-between items-center border-b pb-4">
-            <h2 class="text-2xl font-bold text-on-surface"> Điểm danh</h2>
-            <button type="submit" name="btn_save"
-                class="px-4 py-1.5 bg-[#bb0025] text-white rounded-xl font-bold flex items-center gap-2 hover:opacity-90 transition-all shadow-md text-sm">
-                <span class="material-symbols-outlined text-base">save</span>
-                    Lưu điểm danh
-            </button>
-        </header>
+        <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-primary">
+            groups
+        </span>
 
-        <section class="grid grid-cols-1 md:grid-cols-4 gap-6">
-            <div class="bg-white p-6 rounded-xl shadow-sm border border-outline-variant">
-                <p class="text-sm font-semibold text-secondary uppercase mb-1">Tổng học viên lớp</p>
-                <h3 class="text-3xl font-bold"><?php echo $tong_hv; ?></h3>
-            </div>
-            <div class="bg-white p-6 rounded-xl shadow-sm border border-outline-variant">
-                <p class="text-sm font-semibold text-green-600 uppercase mb-1">Đã có mặt</p>
-                <h3 class="text-3xl font-bold text-green-600"><?php echo $co_mat; ?></h3>
-            </div>
-            <div class="bg-white p-6 rounded-xl shadow-sm border border-outline-variant">
-                <p class="text-sm font-semibold text-red-600 uppercase mb-1">Vắng mặt (Không phép)</p>
-                <h3 class="text-3xl font-bold text-red-600"><?php echo $vang; ?></h3>
-            </div>
-            <div class="bg-white p-6 rounded-xl shadow-sm border border-outline-variant">
-                <p class="text-sm font-semibold text-orange-600 uppercase mb-1">Vắng có phép</p>
-                <h3 class="text-3xl font-bold text-orange-600"><?php echo $co_phep; ?></h3>
-            </div>
-        </section>
+ <select
+class="w-64 bg-white border border-gray-200 rounded-xl pl-12 pr-4 py-3 shadow-sm font-medium"
+onchange="
+location='?MaLopHoc='+this.value
+">
 
-        <div class="bg-white p-6 rounded-xl shadow-sm border border-outline-variant">
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                
-                <div class="space-y-2">
-                    <label class="text-sm font-bold">Chọn lớp học</label>
-                    <select onchange="location.href='diemdanh.php?ma_lop=' + this.value" class="w-full p-2.5 bg-gray-50 border rounded-xl outline-none">
-                        <?php
-                        $lops = $conn->query("SELECT MaLopHoc, TenLop FROM LopHoc");
-                        while($l = $lops->fetch_assoc()) {
-                            $sel = ($l['MaLopHoc'] == $selected_lop) ? 'selected' : '';
-                            echo "<option value='{$l['MaLopHoc']}' $sel>{$l['MaLopHoc']} - {$l['TenLop']}</option>";
-                        }
-                        ?>
-                    </select>
-                </div>
+            <?php while($lop = $dsLop->fetch_assoc()){ ?>
 
-                <div class="space-y-2">
-                    <label class="text-sm font-bold">Ngày học của lớp</label>
-                    <input type="date" value="<?php echo $selected_ngay; ?>" onchange="location.href='diemdanh.php?ma_lop=<?php echo $selected_lop; ?>&ngay_hoc=' + this.value" class="w-full p-2.5 bg-gray-50 border rounded-xl outline-none" />
-                </div>
+            <option
+                value="<?= $lop['MaLopHoc'] ?>"
+                <?= ($maLop==$lop['MaLopHoc'])?'selected':'' ?>>
 
-                <div class="space-y-2">
-                    <label class="text-sm font-bold">Mã buổi học đang chọn</label>
-                    <select onchange="location.href='diemdanh.php?ma_lop=<?php echo $selected_lop; ?>&ma_buoi=' + this.value" class="w-full p-2.5 bg-gray-50 border rounded-xl outline-none font-bold text-primary">
-                        <?php
-                        $buois = $conn->query("SELECT MaBuoiHoc, NgayHoc FROM BuoiHoc WHERE MaLopHoc = '$selected_lop'");
-                        if($buois && $buois->num_rows > 0) {
-                            while($b = $buois->fetch_assoc()) {
-                                $sel = ($b['MaBuoiHoc'] == $selected_buoi) ? 'selected' : '';
-                                echo "<option value='{$b['MaBuoiHoc']}' $sel>{$b['MaBuoiHoc']} (Ngày {$b['NgayHoc']})</option>";
-                            }
-                        } else {
-                            echo "<option value=''>-- Không có buổi học nào --</option>";
-                        }
-                        ?>
-                    </select>
-                </div>
+                <?= htmlspecialchars($lop['TenLop']) ?>
 
-            </div>
+            </option>
+
+            <?php } ?>
+
+        </select>
+
+    </div>
+
+    <!-- Chọn buổi học -->
+    <div class="relative min-w-[220px]">
+
+        <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-primary">
+            event
+        </span>
+
+    <select
+class="w-64 bg-white border border-gray-200 rounded-xl pl-12 pr-4 py-3 shadow-sm font-medium"
+onchange="
+location='?MaLopHoc=<?= $maLop ?>&MaBuoiHoc='+this.value
+">
+
+            <?php while($buoi = $dsBuoi->fetch_assoc()){ ?>
+
+            <option
+                value="<?= $buoi['MaBuoiHoc'] ?>"
+                <?= ($maBuoiHoc==$buoi['MaBuoiHoc'])?'selected':'' ?>>
+
+                Buổi ngày
+                <?= date('d/m/Y',strtotime($buoi['NgayHoc'])) ?>
+
+            </option>
+
+            <?php } ?>
+
+        </select>
+
+    </div>
+</div>
+
+</div>
+<!-- Session Statistics (Modular Card Layout like Dashboard) -->
+<section class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+
+    <!-- Card thông tin buổi học -->
+    <div class="tonal-card p-6 rounded-xl flex justify-between items-center lg:col-span-2">
+
+        <div>
+            <p class="text-xs text-secondary font-bold uppercase mb-2">
+                CHI TIẾT BUỔI HỌC
+            </p>
+
+            <h3 class="text-3xl font-bold text-primary">
+                <?= htmlspecialchars($buoiHoc['TenLop']) ?>
+                —
+                <?= date('d/m/Y', strtotime($buoiHoc['NgayHoc'])) ?>
+            </h3>
         </div>
 
-        <div class="bg-white rounded-xl shadow-sm border border-outline-variant flex flex-col">
-            <div class="px-6 py-4 border-b flex justify-between items-center bg-gray-50">
-                <h4 class="font-bold text-lg">Danh sách học viên lớp này</h4>
-                <span class="px-3 py-1 bg-red-100 text-primary rounded-full font-bold text-xs"><?php echo count($ds_hoc_vien); ?> Học viên</span>
-            </div>
-            <div class="overflow-x-auto">
-                <table class="w-full text-left border-collapse">
-                    <thead>
-                        <tr class="bg-gray-100 border-b">
-                            <th class="px-6 py-3 font-bold text-sm text-secondary uppercase">Mã HV</th>
-                            <th class="px-6 py-3 font-bold text-sm text-secondary uppercase">Học viên</th>
-                            <th class="px-6 py-3 font-bold text-sm text-secondary uppercase">Tên lớp</th>
-                            <th class="px-6 py-3 font-bold text-sm text-secondary uppercase text-center">Trạng thái điểm danh</th>
-                            <th class="px-6 py-3 font-bold text-sm text-secondary uppercase">Ghi chú từ Giáo viên</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y">
-                        <?php if(empty($ds_hoc_vien)): ?>
-                            <tr>
-                                <td colspan="5" class="px-6 py-10 text-center text-gray-400">Không có dữ liệu học viên cho bộ lọc này. Hãy thử chọn lớp khác hoặc buổi khác!</td>
-                            </tr>
-                        <?php else: ?>
-                            <?php foreach($ds_hoc_vien as $hv): 
-                                $status = !empty($hv['TrangThai']) ? $hv['TrangThai'] : 'Có mặt'; // Mặc định tích sẵn Có mặt
-                            ?>
-                                <tr class="hover:bg-gray-50 transition-colors">
-                                    <td class="px-6 py-4 text-sm font-semibold text-secondary"><?php echo $hv['MaHocVien']; ?></td>
-                                    <td class="px-6 py-4">
-                                        <div class="flex items-center gap-3">
-                                            <div class="w-8 h-8 rounded-full bg-primary text-white font-bold flex items-center justify-center text-xs">
-                                                <?php echo substr(strrchr($hv['HoTen'], " "), 1, 2) ?: substr($hv['HoTen'], 0, 2); ?>
-                                            </div>
-                                            <span class="font-bold text-sm"><?php echo $hv['HoTen']; ?></span>
-                                        </div>
-                                    </td>
-                                    <td class="px-6 py-4 text-xs font-bold text-gray-500"><?php echo $hv['TenLop']; ?></td>
-                                    <td class="px-6 py-4">
-                                        <div class="flex items-center justify-center gap-6">
-                                            <label class="flex items-center cursor-pointer gap-2">
-                                                <input type="radio" name="trang_thai[<?php echo $hv['MaHocVien']; ?>]" value="Có mặt" <?php echo ($status == 'Có mặt') ? 'checked' : ''; ?> class="text-green-600 focus:ring-green-500">
-                                                <span class="text-sm font-medium text-green-700">Có mặt</span>
-                                            </label>
-                                            
-                                            <label class="flex items-center cursor-pointer gap-2">
-                                                <input type="radio" name="trang_thai[<?php echo $hv['MaHocVien']; ?>]" value="Vắng" <?php echo ($status == 'Vắng') ? 'checked' : ''; ?> class="text-red-600 focus:ring-red-500">
-                                                <span class="text-sm font-medium text-red-600">Vắng</span>
-                                            </label>
-                                        </div>
-                                    </td>
-                                    <td class="px-6 py-4">
-                                        <input type="text" name="ghi_chu[<?php echo $hv['MaHocVien']; ?>]" value="<?php echo htmlspecialchars($hv['GhiChu'] ?? ''); ?>" placeholder="Nhập ghi chú (VD: Vào muộn 15p...)" class="w-full bg-transparent border-b border-gray-200 focus:border-primary outline-none text-sm py-1 transition-all">
-                                    </td>
-                                </tr>
-                            <?php endforeach; ?>
-                        <?php endif; ?>
-                    </tbody>
-                </table>
-            </div>
+        <div class="w-12 h-12 rounded-lg bg-gray-100 flex items-center justify-center">
+            <span class="material-symbols-outlined">
+                calendar_today
+            </span>
         </div>
-    </main>
+
+    </div>
+
+    <!-- Card thống kê -->
+    <div class="tonal-card p-6 rounded-xl">
+
+        <p class="text-xs text-secondary font-bold uppercase mb-4">
+            THỐNG KÊ ĐIỂM DANH
+        </p>
+
+        <div class="flex justify-between items-center">
+
+            <div class="flex gap-8">
+
+                <div>
+                    <div class="text-green-600 font-bold text-xl">
+                        <?= $thongKe['CoMat'] ?? 0 ?>
+                    </div>
+                    <div class="text-sm text-gray-500">
+                        Hiện diện
+                    </div>
+                </div>
+
+                <div>
+                    <div class="text-amber-500 font-bold text-xl">
+                        <?= $thongKe['Muon'] ?? 0 ?>
+                    </div>
+                    <div class="text-sm text-gray-500">
+                        Muộn
+                    </div>
+                </div>
+
+                <div>
+                    <div class="text-red-600 font-bold text-xl">
+                        <?= $thongKe['Vang'] ?? 0 ?>
+                    </div>
+                    <div class="text-sm text-gray-500">
+                        Vắng mặt
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="flex gap-2">
+
+                <a href="xuatdiemdanh.php?MaBuoiHoc=<?= $maBuoiHoc ?>"
+                   class="p-2 hover:bg-gray-100 rounded">
+                    <span class="material-symbols-outlined">
+                        file_download
+                    </span>
+                </a>
+
+                <a href="guimail.php?MaBuoiHoc=<?= $maBuoiHoc ?>"
+                   class="p-2 hover:bg-gray-100 rounded">
+                    <span class="material-symbols-outlined">
+                        mail
+                    </span>
+                </a>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</section>
+<!-- Student List Table (Elevated White Card) -->
+<form action="luudiemdanh.php" method="POST">
+<input type="hidden" name="MaBuoiHoc" value="<?= $maBuoiHoc ?>">
+<section class="tonal-card rounded-xl overflow-hidden mb-32" style="transform: translateY(0px);">
+<div class="overflow-x-auto">
+<table class="w-full table-fixed border-collapse text-left">
+<colgroup>
+    <col class="w-16">
+    <col class="w-72">
+    <col>
+    <col class="w-96">
+</colgroup>
+<thead>
+</thead>
+<tbody class="divide-y divide-outline-variant/20">
+<?php
+$stt = 1;
+$tongHocVien = $result->num_rows;
+while($row = $result->fetch_assoc()){
+?>
+<tr class="hover:bg-surface-container-low transition-colors group">
+
+    <td class="py-5 px-6 font-body-md text-on-surface-variant">
+        <?= str_pad($stt++,2,"0",STR_PAD_LEFT) ?>
+    </td>
+
+    <td class="py-5 px-6">
+        <div class="flex items-center gap-4">
+            <span class="font-label-md text-on-surface">
+                <?= htmlspecialchars($row['HoTen']) ?>
+            </span>
+        </div>
+    </td>
+
+    <td class="py-5 px-6">
+        <div class="flex justify-center items-center gap-8">
+
+            <label class="flex items-center gap-2 cursor-pointer">
+    <input
+        type="radio"
+        name="status[<?= $row['MaHocVien'] ?>]"
+        value="Co mat"
+        <?= ($row['TrangThai']=="Co mat") ? "checked" : "" ?>
+    >
+    <span>Có mặt</span>
+</label>
+
+<label class="flex items-center gap-2 cursor-pointer">
+    <input
+        type="radio"
+        name="status[<?= $row['MaHocVien'] ?>]"
+        value="Vang"
+        <?= ($row['TrangThai']=="Vang") ? "checked" : "" ?>
+    >
+    <span>Vắng mặt</span>
+</label>
+
+<label class="flex items-center gap-2 cursor-pointer">
+    <input
+        type="radio"
+        name="status[<?= $row['MaHocVien'] ?>]"
+        value="Muon"
+        <?= ($row['TrangThai']=="Muon") ? "checked" : "" ?>
+    >
+    <span>Muộn</span>
+</label>
+
+        </div>
+    </td>
+
+    <td class="py-5 px-6">
+        <input
+            type="text"
+            name="ghichu[<?= $row['MaHocVien'] ?>]"
+            value="<?= htmlspecialchars($row['GhiChu']) ?>"
+            placeholder="Thêm ghi chú..."
+            class="w-full bg-transparent border-b border-outline-variant/30 focus:border-primary py-1 font-body-sm text-on-surface focus:outline-none transition-colors">
+    </td>
+
+</tr>
+<?php } ?>
+</tbody>
+</table>
+</div>
+</section>
+<!-- Sticky Bottom Action Bar -->
+<div class="fixed bottom-0 left-[260px] right-0
+            h-20 bg-white
+            border-t border-gray-200
+            flex items-center justify-between
+            px-6 z-40">
+    <div class="flex items-center gap-2 text-gray-500 flex-shrink-0">
+<span class="material-symbols-outlined text-sm" data-icon="info">info</span>
+<span class="font-label-sm">Tự động lưu lúc 10:45 • Tổng: <span class="font-bold text-on-surface"><?= $tongHocVien ?></span></span>
+</div>
+<div class="flex gap-3 ml-auto">
+<button
+    type="button"
+    onclick="location.reload()"
+<button
+type="submit"
+class="px-8 py-3 rounded-xl
+bg-primary
+text-white
+font-semibold
+shadow-md
+hover:opacity-90">
+    Hủy thay đổi
+</button>
+<button
+type="submit"
+class="px-8 py-3 rounded-xl
+bg-primary
+text-white
+font-semibold
+shadow-md
+hover:opacity-90">
+    <span class="material-symbols-outlined text-sm">save</span>
+    Lưu điểm danh
+</button>
+</div>
+</div>
 </form>
-</body>
-</html>
+</div>
+</main>
+<script>
+        // Micro-interactions for radio buttons to highlight rows
+      document.querySelectorAll('input[type="radio"]').forEach(radio => {
+
+    radio.addEventListener('change', (e) => {
+
+        const row = e.target.closest('tr');
+
+        row.classList.remove(
+            'bg-red-50',
+            'bg-green-50',
+            'bg-amber-50'
+        );
+
+        if(e.target.value === 'Co mat'){
+            row.classList.add('bg-green-50');
+        }
+
+        if(e.target.value === 'Vang'){
+            row.classList.add('bg-red-50');
+        }
+
+        if(e.target.value === 'Muon'){
+            row.classList.add('bg-amber-50');
+        }
+
+    });
+
+});
+
+        // Hover effects for cards
+        document.querySelectorAll('.tonal-card').forEach(card => {
+            card.addEventListener('mousedown', () => {
+                card.style.transform = 'scale(0.99)';
+            });
+            card.addEventListener('mouseup', () => {
+                card.style.transform = 'translateY(0)';
+            });
+        });
+    </script>
+
+
+</body></html>
